@@ -1,0 +1,35 @@
+name: Update Filecoin Plus registry
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes
+
+jobs:
+  update-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Checkout the script
+        uses: actions/checkout@v4
+        with:
+          repository: asynctomatic/filecoin-allocator-registry
+          ref: main
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Set environment variables and run the script
+        run: |
+          export REPO_OWNER=${{ env.BOT_REPOSITORY_ORG }}
+          export REPO_NAME=${{ env.BOT_REPOSITORY_NAME }}
+          export REPO_PATH=${{ env.BOT_REPOSITORY_PATH }}
+          export REPO_BRANCH=${{ env.BOT_REPOSITORY_BRANCH }}
+          npm run start
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOTUS_TOKEN: ${{ secrets.LOTUS_TOKEN }}
