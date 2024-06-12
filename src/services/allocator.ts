@@ -1,7 +1,7 @@
 import axios from "axios";
 
-import { GithubClient } from "../clients/github.js";
-import { REPO_OWNER, REPO_NAME, REPO_PATH, REPO_BRANCH } from "../config.js";
+import GithubClient, { RepositoryItem } from "../clients/github.js";
+import config from "../config.js";
 
 type ApplicationInfo = {
   allocations: {
@@ -43,7 +43,6 @@ type Allocator = {
 
 interface IAllocatorService {
   getAllocators(): Promise<Allocator[]>;
-  updateAllocator(allocator: Allocator): Promise<void>;
 }
 
 export default class AllocatorService implements IAllocatorService {
@@ -54,11 +53,11 @@ export default class AllocatorService implements IAllocatorService {
   }
 
   async getAllocators(): Promise<Allocator[]> {
-    const repoContents = await this.githubClient.getRepoContents(
-      REPO_OWNER,
-      REPO_NAME,
-      REPO_PATH,
-      REPO_BRANCH
+    const repoContents = await this.githubClient.getRepoContent(
+      config.github.repoOwner,
+      config.github.repoName,
+      config.github.repoBranch,
+      "Allocators"
     );
 
     const regex = /^Allocators\/\d+\.json$/;
@@ -68,9 +67,9 @@ export default class AllocatorService implements IAllocatorService {
     );
 
     const allocatorPromises = allocatorsMetadata.map(
-      async (allocatorMetadata: { path: string; download_url: string }) => {
+      async (allocatorMetadata: RepositoryItem) => {
         return axios
-          .get(allocatorMetadata.download_url)
+          .get(allocatorMetadata.download_url!)
           .then((response) => response.data)
           .catch((error) => {
             console.error(
@@ -85,35 +84,5 @@ export default class AllocatorService implements IAllocatorService {
     return (await Promise.all(allocatorPromises))
       .filter(Boolean)
       .map((allocatorData) => allocatorData as Allocator);
-  }
-
-  async updateAllocator(allocator: Partial<Allocator>): Promise<void> {
-    const downloadUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/Allocators/${allocator.application_number}.json`;
-    const remoteAllocator = await axios
-      .get(downloadUrl)
-      .then((response) => response.data)
-      .catch((error) => {
-        console.error(
-          `Error fetching content for allocator: ${allocator.application_number}`,
-          error
-        );
-        return null; // Handle errors, potentially return null
-      });
-
-    const updatedAllocator = {
-      ...remoteAllocator,
-      ...allocator,
-    };
-
-    //// 2. Update the allocator file.
-    const updateFile = await this.githubClient.updateFile(
-      REPO_OWNER,
-      REPO_NAME,
-      `Allocators/${allocator.application_number}.json`,
-      JSON.stringify(updatedAllocator, null, 4),
-      "chore: Update allocator multisig signers",
-      REPO_BRANCH
-    );
-    console.log("Update file:", updateFile);
   }
 }

@@ -28,9 +28,9 @@
     "@ipld/dag-cbor": "^9.2.0",
     "@octokit/rest": "^20.1.1",
     "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
     "multiformats": "^13.1.1",
     "pino": "^9.1.0",
-    "ts-results-es": "^4.2.0",
     "uuid": "^9.0.1"
   }
 }

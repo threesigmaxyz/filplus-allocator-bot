@@ -1,23 +1,24 @@
 name: Update Filecoin Plus registry
 
+# Support for configurable cron scheduling and manual workflow dispatch.
 on:
+  # Manually run the workflow
+  workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *" # every 5 minutes
+    # Automatically run the workflow every hour
+    - cron: '0 * * * *'
 
 jobs:
   update-registry:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-
-      - name: Checkout the script
-        uses: actions/checkout@v4
-        with:
-          repository: asynctomatic/filecoin-allocator-registry
-          ref: main
 
       - name: Install dependencies
         run: |
@@ -31,5 +32,5 @@ jobs:
           export REPO_BRANCH=${{ env.BOT_REPOSITORY_BRANCH }}
           npm run start
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           LOTUS_TOKEN: ${{ secrets.LOTUS_TOKEN }}

@@ -1,4 +1,4 @@
-import { LotusClient } from "../clients/lotus.js";
+import LotusClient from "../clients/lotus.js";
 
 declare type Multisig = {
   address: string;

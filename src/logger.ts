@@ -1,9 +1,9 @@
 import pino from "pino";
 
-import { LOG_LEVEL } from "./config.js";
+import config from "./config.js";
 
 const logger = pino({
-  level: LOG_LEVEL, // Set the default logging level
+  level: config.logging.level,
   formatters: {
     level: (label) => {
       return { level: label.toUpperCase() };

@@ -1,8 +1,10 @@
-import { GithubClient } from "../clients/github";
-import { LotusClient } from "../clients/lotus";
-import { REPO_OWNER, REPO_NAME, REPO_BRANCH } from "../config.js";
-import { decodeActorEvent } from "../utils/built-in-actor-events.js";
 import axios from "axios";
+
+import GithubClient, { RepositoryItem } from "../clients/github";
+import LotusClient from "../clients/lotus";
+import logger from "../logger.js";
+import { decodeActorEvent } from "../utils/built-in-actor-events.js";
+import config from "../config.js";
 
 const FILECOIN_EPOCHS_PER_DAY = 2880; // 30 seconds per epoch
 const MAX_FILTER_EPOCH_RANGE = Math.floor(FILECOIN_EPOCHS_PER_DAY / 12);
@@ -26,7 +28,6 @@ interface IAllocationService {
     fromHeight: number,
     confirmations: number
   ): Promise<Allocation[]>;
-  addAllocations(allocations: Allocation[]): Promise<void>;
 }
 
 export default class AllocationService implements IAllocationService {
@@ -39,34 +40,31 @@ export default class AllocationService implements IAllocationService {
   }
 
   async getAllocations(): Promise<Allocation[]> {
-    const repoContentsResult = await this.githubClient.getRepoContentsV2(
-      REPO_OWNER,
-      REPO_NAME,
-      "Allocations",
-      REPO_BRANCH
-    );
+    try {
+      // Load repository contents
+      const repoContents = await this.githubClient.getRepoContent(
+        config.github.repoOwner,
+        config.github.repoName,
+        config.github.repoBranch,
+        "Allocations"
+      );
 
-    const regex = /^Allocations\/\d+\.json$/;
-    const repoContents = repoContentsResult
-      .map((result) =>
-        result.filter((entry) => entry.type == "file" && regex.test(entry.path))
-      )
-      .unwrapOr([]);
+      // Define the file matching pattern
+      const regex = /^Allocations\/\d+\.json$/;
 
-    const clientAllocations = await Promise.all(
-      repoContents.map(async (entry) => {
-        const allocationData = await axios
-          .get(entry.download_url)
-          .then((response) => response.data)
-          .catch((error) => {
-            console.error(`Error fetching content for ${entry.path}:`, error);
-            return null; // Handle errors, potentially return null
-          });
-        return allocationData;
-      })
-    );
+      // Process each eligible file entry concurrently
+      const clientAllocations = await Promise.all(
+        repoContents
+          .filter(entry => entry.type === "file" && regex.test(entry.path))
+          .map(entry => this.downloadAllocations(entry.download_url!))
+      );
 
-    return clientAllocations.filter(Boolean).flat();
+      // Filter out null entries and flatten the results if needed
+      return clientAllocations.filter(Boolean).flat();
+    } catch (error) {
+      logger.warn('Failed to fetch allocations from GitHub.');
+      return []; // Return an empty array on failure
+    }
   }
 
   async fetchAllocations(
@@ -83,15 +81,12 @@ export default class AllocationService implements IAllocationService {
     );
 
     if (syncToHeight < syncFromHeight) {
-      console.error("Debug: Nothing to sync");
+      logger.warn("Nothing to sync");
       return [];
     }
 
-    console.log(
-      "Synching allocations from height",
-      syncFromHeight,
-      "to height",
-      syncToHeight
+    logger.debug(
+      `Synching allocations from height ${syncFromHeight} to height ${syncToHeight}`
     );
 
     let filterToHeight;
@@ -103,13 +98,8 @@ export default class AllocationService implements IAllocationService {
         filterFromHeight + MAX_FILTER_EPOCH_RANGE,
         syncToHeight
       );
-      console.log(
-        "Fetching actor events from height",
-        filterFromHeight,
-        "to",
-        filterToHeight,
-        "with epoch range",
-        filterEpochRange
+      logger.debug(
+        `Fetching actor events from height ${filterFromHeight} to ${filterToHeight} with epoch range ${filterEpochRange}`
       );
 
       const actorEventsRaw = await this.lotusClient.getBuiltInActorEvents(
@@ -118,13 +108,8 @@ export default class AllocationService implements IAllocationService {
         ["allocation"] // TODO: add "allocation-removed"
       );
 
-      console.log(
-        "Fetched",
-        actorEventsRaw.length,
-        "actor events from height",
-        filterFromHeight,
-        "to",
-        filterToHeight
+      logger.debug(
+        `Fetched ${actorEventsRaw.length} actor events from height ${filterFromHeight} to ${filterToHeight}`
       );
 
       if (actorEventsRaw.length >= MAX_FILTER_RESULTS) {
@@ -132,7 +117,9 @@ export default class AllocationService implements IAllocationService {
         if (filterEpochRange < 1) {
           throw new Error("Filter epoch range is too small");
         }
-        console.log("Filter epoch range reduced to", filterEpochRange);
+        logger.debug(
+          `Filter epoch range too large, reducing to ${filterEpochRange}`
+        );
         continue;
       }
 
@@ -158,54 +145,14 @@ export default class AllocationService implements IAllocationService {
     return allocations;
   }
 
-  async addAllocations(newAllocations: Allocation[]): Promise<void> {
-    // Fetch repository allocations and group by client.
-    const allocations = await this.getAllocations();
-
-    // Add new allocations to the existing allocations.
-    const updatedAllocationsByClient: Record<string, Allocation[]> = {};
-    for (const newAllocation of newAllocations) {
-      const clientId = newAllocation.clientId;
-
-      // Copy the existing allocations for the client.
-      if (!updatedAllocationsByClient[clientId]) {
-        updatedAllocationsByClient[clientId] = allocations.filter(
-          (alloc) => alloc.clientId === clientId
-        );
-      }
-
-      // Check if the allocation already exists.
-      if (
-        updatedAllocationsByClient[clientId]?.some(
-          (alloc) => alloc.id === newAllocation.id
-        )
-      ) {
-        console.log(
-          "Duplicate allocation:",
-          newAllocation.id,
-          newAllocation.height,
-          newAllocation.clientId
-        );
-        continue;
-      }
-
-      // Add the new allocation.
-      updatedAllocationsByClient[clientId].push(newAllocation);
-    }
-
-    // Update the allocation files.
-    for (const clientId in updatedAllocationsByClient) {
-      const clientAllocations = updatedAllocationsByClient[clientId];
-      const clientAllocationsData = JSON.stringify(clientAllocations, null, 4);
-      const clientAllocationsPath = `Allocations/${clientId}.json`;
-      await this.githubClient.updateFile(
-        REPO_OWNER,
-        REPO_NAME,
-        clientAllocationsPath,
-        clientAllocationsData,
-        "chore: Update client allocations",
-        REPO_BRANCH
-      );
+   // Helper function to fetch allocation data
+   private async downloadAllocations(url: string): Promise<Allocation[]> {
+    try {
+      const response = await axios.get(url);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching content from ${url}:`, error);
+      return []
     }
   }
 }

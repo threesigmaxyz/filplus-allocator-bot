@@ -1,82 +1,39 @@
-import axios from "axios";
-import { Err, Ok, Result } from "ts-results-es";
+import { Octokit } from "@octokit/rest";
+import { components } from "@octokit/openapi-types";
 
-// TODO: Rename repository metadata
-type RepositoryContent = {
-  type: string;
-  name: string;
-  path: string;
-  download_url: string;
-  // TODO: Add more fields as needed.
-};
 
-export class GithubClient {
-  private authToken: string;
+export type RepositoryItem = components["schemas"]["content-directory"][number];
+export type Branch = components["schemas"]["git-ref"];
+
+class GithubClient {
+  private octokit: Octokit;
 
   constructor(authToken: string) {
-    this.authToken = authToken;
+    this.octokit = new Octokit({ auth: authToken });
   }
 
-  async getRepoContentsV2(
+  async getRepoContent(
     owner: string,
     repo: string,
-    path: string,
-    ref?: string
-  ): Promise<Result<RepositoryContent[], Error>> {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}${
-      ref ? `?ref=${ref}` : ""
-    }`;
+    branch?: string,
+    path: string = "",
+  ): Promise<RepositoryItem[]> {
+    const params: { owner: string; repo: string; path: string; ref?: string } =
+      {
+        owner: owner,
+        repo: repo,
+        path: path,
+      };
 
-    // Fetch the data from the GitHub API.
-    const result = fetch(url, {
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    })
-      // Parse the response as JSON.
-      .then(async (res) => {
-        // Handle successful responses.
-        if (res.ok) {
-          return res
-            .json()
-            .then((repo: RepositoryContent[]) => new Ok(repo))
-            .catch((error) => new Err(error));
-        }
+    if (branch) {
+      params.ref = branch;
+    }
 
-        // Handle unsuccessful responses.
-        if (res.status === 404) {
-          return new Err("Not found");
-        }
-        return new Err("Unknown API error");
-      })
+    const { data } = await this.octokit.repos.getContent(params);
 
-      // Handle any errors.
-      .catch((error) => {
-        console.error(error);
-        return new Err(error);
-      });
+    if (!Array.isArray(data)) return [];
 
-    return result;
-  }
-
-  async getRepoContents(
-    owner: string,
-    repo: string,
-    path: string,
-    ref?: string
-  ): Promise<any> {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}${
-      ref ? `?ref=${ref}` : ""
-    }`;
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    });
-    return await response.json();
+    return data;
   }
 
   async createBranch(
@@ -84,124 +41,166 @@ export class GithubClient {
     repo: string,
     branchName: string,
     baseBranch: string
-  ): Promise<Result<any, Error>> {
-    const sha = await this.getBranchLatestCommit(owner, repo, baseBranch);
-    const url = `https://api.github.com/repos/${owner}/${repo}/git/refs`;
-    const requestBody = JSON.stringify({
+  ): Promise<Branch> {
+    // Get the latest commit SHA of the base branch.
+    const sha = await this.getReferenceHash(owner, repo, baseBranch);
+
+    // Create a new branch with the latest commit SHA.
+    const { data } = await this.octokit.git.createRef({
+      owner: owner,
+      repo: repo,
       ref: `refs/heads/${branchName}`,
-      sha,
+      sha: sha,
     });
 
-    return axios
-      .post(url, requestBody, {
-        headers: {
-          Authorization: `Bearer ${this.authToken}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      })
-      .then((res) => {
-        if (res.status === 201) return new Ok(res.data);
-        return new Err(new Error("Unknown response status."));
-      })
-      .catch((error) => {
-        return new Err(error);
-      });
-
-    const response = await axios.post(url, requestBody, {
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    });
-    if (response.status !== 201) {
-      throw new Error(`Failed to create branch: ${response.statusText}`);
-    }
-    return response.data;
+    return data;
   }
 
-  async updateFile(
+  async commitToBranch(
     owner: string,
     repo: string,
-    path: string,
-    content: string,
+    branch: string,
     message: string,
-    branch: string
+    files: { path: string; content: string }[]
   ): Promise<any> {
-    const sha = await this.getFileSha(owner, repo, path, branch);
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message,
-        content: Buffer.from(content).toString("base64"),
-        branch,
-        sha,
-      }),
+    const blobs = await Promise.all(
+      files.map((file) => this.createBlob(owner, repo, file.content))
+    );
+
+    const base = await this.getReferenceHash(owner, repo, branch);
+    const treeHash = await this.createTree(
+      owner,
+      repo,
+      base,
+      blobs,
+      files.map((file) => file.path)
+    );
+
+    const commitHash = await this.createCommit(owner, repo, message, treeHash, [
+      base,
+    ]);
+
+    await this.octokit.git.updateRef({
+      owner,
+      repo,
+      ref: `heads/${branch}`,
+      sha: commitHash,
     });
-    return await response.json();
+    return commitHash;
   }
 
   async createPullRequest(
     owner: string,
     repo: string,
-    head: string,
-    base: string,
+    head: string,  // Branch containing the changes
+    base: string,  // Branch to merge the changes into
     title: string,
     body: string
-  ): Promise<any> {
-    const url = `https://api.github.com/repos/${owner}/${repo}/pulls`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        head,
-        base,
-      }),
+  ): Promise<any> { // TODO: Any -> PullRequest
+    const { data } = await this.octokit.pulls.create({
+      owner,
+      repo,
+      title,
+      body,
+      head,
+      base,
     });
-    return await response.json();
+    return data;
   }
 
-  async getBranchLatestCommit(
+  async addCommentToPullRequest(
+    owner: string,
+    repo: string,
+    branch: string,
+    comment: string
+  ): Promise<any> { // TODO: Any -> Comment
+    const { data: pullRequests } = await this.octokit.pulls.list({
+      owner,
+      repo,
+      head: `${owner}:${branch}`,
+      state: 'open'
+    });
+
+    if (!pullRequests) {
+      throw new Error(`Pull request not found for branch ${branch}`);
+    }
+
+    const { data } = await this.octokit.issues.createComment({
+      owner,
+      repo,
+      issue_number: pullRequests[0].number,
+      body: comment,
+    });
+    return data;
+  }
+
+  private async getReferenceHash(
     owner: string,
     repo: string,
     branch: string
   ): Promise<string> {
-    const url = `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`;
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
+    const { data } = await this.octokit.git.getRef({
+      owner: owner,
+      repo: repo,
+      ref: `heads/${branch}`,
     });
-    const data = await response.json();
     return data.object.sha;
   }
 
-  async getFileSha(
+  private async createBlob(
     owner: string,
     repo: string,
-    path: string,
-    branch: string
+    content: string
   ): Promise<string> {
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${this.authToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
+    const { data } = await this.octokit.git.createBlob({
+      owner: owner,
+      repo: repo,
+      content: content,
+      encoding: "utf-8",
     });
-    const data = await response.json();
-    return data.sha || null; // Returns null if file does not exist, meaning it will be a new file.
+    return data.sha;
+  }
+
+  private async createTree(
+    owner: string,
+    repo: string,
+    base: string,
+    blobs: string[],
+    paths: string[]
+  ): Promise<string> {
+    const tree: any = blobs.map((blob: any, index: number) => ({
+      path: paths[index],
+      mode: "100644",
+      type: `blob`,
+      sha: blob,
+    }));
+
+    const { data } = await this.octokit.git.createTree({
+      owner: owner,
+      repo: repo,
+      tree: tree,
+      base_tree: base,
+    });
+
+    return data.sha;
+  }
+
+  private async createCommit(
+    owner: string,
+    repo: string,
+    message: string,
+    tree: string,
+    parents: string[]
+  ): Promise<string> {
+    const { data } = await this.octokit.git.createCommit({
+      owner: owner,
+      repo: repo,
+      message: message,
+      tree: tree,
+      parents: parents,
+    });
+    return data.sha;
   }
 }
+
+export default GithubClient;

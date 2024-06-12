@@ -9,7 +9,7 @@ declare type BuiltInActorEventType =
   | "allocation"
   | "allocation-removed";
 
-export class LotusClient {
+class LotusClient {
   private httpRpcUrl: string;
   private httpRpcToken: string;
   private maxFilters: number;
@@ -112,3 +112,5 @@ export class LotusClient {
     return responseData.result;
   }
 }
+
+export default LotusClient;
