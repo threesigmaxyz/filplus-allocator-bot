@@ -26,11 +26,11 @@ jobs:
 
       - name: Set environment variables and run the script
         run: |
-          export REPO_OWNER=${{ env.BOT_REPOSITORY_ORG }}
-          export REPO_NAME=${{ env.BOT_REPOSITORY_NAME }}
-          export REPO_PATH=${{ env.BOT_REPOSITORY_PATH }}
-          export REPO_BRANCH=${{ env.BOT_REPOSITORY_BRANCH }}
           npm run start
         env:
+          REPO_OWNER: ${{ vars.BOT_REPOSITORY_ORG }}
+          REPO_NAME: ${{ vars.BOT_REPOSITORY_NAME }}
+          REPO_PATH: ${{ vars.BOT_REPOSITORY_PATH }}
+          REPO_BRANCH: ${{ vars.BOT_REPOSITORY_BRANCH }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           LOTUS_TOKEN: ${{ secrets.LOTUS_TOKEN }}
