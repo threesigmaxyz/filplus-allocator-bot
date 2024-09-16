@@ -95,32 +95,43 @@ export default class AllocationService implements IAllocationService {
     const allocations: Allocation[] = [];
     while (filterFromHeight < syncToHeight) {
       filterToHeight = Math.min(
-        filterFromHeight + MAX_FILTER_EPOCH_RANGE,
+        filterFromHeight + filterEpochRange,
         syncToHeight
       );
       logger.debug(
         `Fetching actor events from height ${filterFromHeight} to ${filterToHeight} with epoch range ${filterEpochRange}`
       );
 
-      const actorEventsRaw = await this.lotusClient.getBuiltInActorEvents(
-        filterFromHeight,
-        filterToHeight,
-        ["allocation"] // TODO: add "allocation-removed"
-      );
 
-      logger.debug(
-        `Fetched ${actorEventsRaw.length} actor events from height ${filterFromHeight} to ${filterToHeight}`
-      );
 
-      if (actorEventsRaw.length >= MAX_FILTER_RESULTS) {
-        filterEpochRange = Math.floor(filterEpochRange / 2);
-        if (filterEpochRange < 1) {
-          throw new Error("Filter epoch range is too small");
-        }
-        logger.debug(
-          `Filter epoch range too large, reducing to ${filterEpochRange}`
+      let actorEventsRaw;
+      try {
+        actorEventsRaw = await this.lotusClient.getBuiltInActorEvents(
+          filterFromHeight,
+          filterToHeight,
+          ["allocation"]
         );
-        continue;
+
+        logger.debug(
+          `Fetched ${actorEventsRaw.length} actor events from height ${filterFromHeight} to ${filterToHeight}`
+        );
+
+        if (actorEventsRaw.length >= MAX_FILTER_RESULTS) {
+          throw new Error("MAX_FILTER_RESULTS exceeded");
+        }
+      } catch (error: any) {
+        if (error.message === "MAX_FILTER_RESULTS exceeded" || 
+            (error.response && error.response.data && error.response.data.includes("Response is too big"))) {
+          filterEpochRange = Math.floor(filterEpochRange / 2);
+          if (filterEpochRange < 1) {
+            throw new Error("Filter epoch range is too small");
+          }
+          logger.debug(
+            `Filter epoch range too large, reducing to ${filterEpochRange}`
+          );
+          continue;
+        }
+        throw error;
       }
 
       const newAllocations = actorEventsRaw.map((actorEvent: any) => {

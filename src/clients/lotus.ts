@@ -79,6 +79,7 @@ class LotusClient {
     ];
 
     const result = await this.request("Filecoin.GetActorEventsRaw", params);
+    console.log(result);
     if (result != null && result.length === this.maxFilters) {
       throw new Error("Max results reached for GetActorEventsRaw");
     }
