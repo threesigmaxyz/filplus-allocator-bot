@@ -107,29 +107,29 @@ const githubClient = new GithubClient(config.github.token);
 
   const updatedAllocations: Record<string, Allocation[]> = {};
   for (const newAllocation of newAllocations) {
-    const clientId = newAllocation.clientId;
+    const providerId = newAllocation.providerId;
 
     // Copy the existing allocations for the client.
-    if (!updatedAllocations[clientId]) {
-      updatedAllocations[clientId] = allocations.filter(
-        (alloc) => alloc.clientId === clientId
+    if (!updatedAllocations[providerId]) {
+      updatedAllocations[providerId] = allocations.filter(
+        (alloc) => alloc.providerId === providerId
       );
     }
 
     // Check if the allocation already exists.
     if (
-      updatedAllocations[clientId]?.some(
+      updatedAllocations[providerId]?.some(
         (alloc) => alloc.id === newAllocation.id
       )
     ) {
       logger.debug(
-        `Allocation already exists for client: ${clientId}, allocation: ${newAllocation.id}`
+        `Allocation already exists for provider: ${providerId}, allocation: ${newAllocation.id}`
       );
       continue;
     }
 
     // Add the new allocation.
-    updatedAllocations[clientId].push(newAllocation);
+    updatedAllocations[providerId].push(newAllocation);
   }
 
   const updatedAllocatorFiles = updatedAllocators.map((allocator: any) => ({
@@ -137,9 +137,9 @@ const githubClient = new GithubClient(config.github.token);
     content: JSON.stringify(allocator, null, 2),
   }));
   const updatedAllocationFiles = Object.entries(updatedAllocations).map(
-    ([clientId, clientAllocations]) => ({
-      path: `Allocations/${clientId}.json`,
-      content: JSON.stringify(clientAllocations, null, 2),
+    ([providerId, providerAllocations]) => ({
+      path: `Allocations/${providerId}.json`,
+      content: JSON.stringify(providerAllocations, null, 2),
     })
   );
 
@@ -164,10 +164,10 @@ const githubClient = new GithubClient(config.github.token);
     .map((allocator: any) => `Allocator: ${allocator.application_number}`)
     .join(
       "\n- "
-    )}\n\nUpdated allocations for the following clients:\n- ${Object.entries(
+    )}\n\nUpdated allocations for the following allocators:\n- ${Object.entries(
     updatedAllocations
   )
-    .map(([clientId]) => `Client: ${clientId}`)
+    .map(([allocatorId]) => `Allocator: ${allocatorId}`)
     .join("\n- ")}`;
   
   try {
