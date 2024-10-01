@@ -120,8 +120,7 @@ export default class AllocationService implements IAllocationService {
           throw new Error("MAX_FILTER_RESULTS exceeded");
         }
       } catch (error: any) {
-        if (error.message === "MAX_FILTER_RESULTS exceeded" || 
-            (error.response && error.response.data && error.response.data.includes("Response is too big"))) {
+        if (error.message === "MAX_FILTER_RESULTS exceeded" || (error.message.includes("Response is too big"))) {
           filterEpochRange = Math.floor(filterEpochRange / 2);
           if (filterEpochRange < 1) {
             throw new Error("Filter epoch range is too small");
