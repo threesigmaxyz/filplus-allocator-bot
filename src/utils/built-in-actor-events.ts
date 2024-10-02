@@ -8,10 +8,6 @@ declare type BuiltInActorEventEntry = {
   Value: string;
 };
 
-declare type BuiltInActorEvent = {
-  entries: BuiltInActorEventEntry[];
-};
-
 const eventValidators = {};
 
 function decodeCborInBase64(data: string): string {

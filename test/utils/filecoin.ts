@@ -50,13 +50,11 @@ export async function registerAllocator(allocation: number = 10000000) {
   const allocatorAddress = (
     await runCommand(LOTUS_BASE_PATH + "lotus wallet new secp256k1")
   ).trim();
-  console.log(allocatorAddress);
 
   const result = await runCommand(
     LOTUS_BASE_PATH +
       `lotus-shed verifreg add-verifier ${rootKey1.address} ${allocatorAddress} ${allocation}`
   );
-  console.log(result);
 }
 
 export async function grantDatacap(

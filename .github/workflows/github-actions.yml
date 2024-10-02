@@ -5,8 +5,8 @@ on:
   # Manually run the workflow
   workflow_dispatch:
   schedule:
-    # Automatically run the workflow every night at midnight
-    - cron: '0 0 * * *'
+    # Automatically run the workflow every 4 hours
+    - cron: '0 */4 * * *'
 
 jobs:
   update-registry:

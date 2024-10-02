@@ -69,7 +69,7 @@ export default class AllocatorService implements IAllocatorService {
     const allocatorPromises = allocatorsMetadata.map(
       async (allocatorMetadata: RepositoryItem) => {
         return axios
-          .get(allocatorMetadata.download_url!)
+          .get(allocatorMetadata.download_url! + "?token=" + new Date().getTime())
           .then((response) => response.data)
           .catch((error) => {
             console.error(

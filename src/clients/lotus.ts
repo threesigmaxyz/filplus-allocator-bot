@@ -7,7 +7,8 @@ import { v4 as uuid } from "uuid";
 declare type BuiltInActorEventType =
   | "verifier-balance"
   | "allocation"
-  | "allocation-removed";
+  | "allocation-removed"
+  | "claim"
 
 class LotusClient {
   private httpRpcUrl: string;
@@ -83,7 +84,7 @@ class LotusClient {
       throw new Error("Max results reached for GetActorEventsRaw");
     }
 
-    return result;
+    return result ?? []
   }
 
   private async request(method: string, params: any[]) {

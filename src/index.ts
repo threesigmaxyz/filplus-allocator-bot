@@ -6,15 +6,17 @@ import AllocatorService from "./services/allocator.js";
 import AllocationService, { Allocation } from "./services/allocation.js";
 import logger from "./logger.js";
 import { areArraysEqualSets } from "./utils/index.js";
+import FilfoxClient from "./clients/filfox.js";
 
 const lotusClient = new LotusClient(config.lotus.url, config.lotus.token);
 const githubClient = new GithubClient(config.github.token);
+const filfoxClient = new FilfoxClient();
 
 (async () => {
   logger.info("Starting the Filecoin Allocator Registry Bot...");
 
   const allocatorService = new AllocatorService(githubClient);
-  const allocationService = new AllocationService(lotusClient, githubClient);
+  const allocationService = new AllocationService(lotusClient, githubClient, filfoxClient);
   const multisigService = new MultisigService(lotusClient);
 
   // Create the branch.
@@ -102,45 +104,43 @@ const githubClient = new GithubClient(config.github.token);
       : `Synching from block height: ${fromHeight}`
   );
 
-  const newAllocations = await allocationService.fetchAllocations(fromHeight);
-  logger.debug(`Fetched ${newAllocations.length} new allocation events.`);
+  const fetchedAllocations = await allocationService.fetchAllocations(fromHeight);
+  logger.debug(`Fetched ${fetchedAllocations.length} new allocation events.`);
 
-  const updatedAllocations: Record<string, Allocation[]> = {};
-  for (const newAllocation of newAllocations) {
-    const providerId = newAllocation.providerId;
-
-    // Copy the existing allocations for the client.
-    if (!updatedAllocations[providerId]) {
-      updatedAllocations[providerId] = allocations.filter(
-        (alloc) => alloc.providerId === providerId
-      );
-    }
-
+  const newAllocations: Record<number, Allocation[]> = {};
+  for (const fetchedAllocation of fetchedAllocations) {
     // Check if the allocation already exists.
+    const verifierId = fetchedAllocation.verifierId;
     if (
-      updatedAllocations[providerId]?.some(
-        (alloc) => alloc.id === newAllocation.id
+      allocations.some(
+        (alloc) => alloc.msgCid === fetchedAllocation.msgCid
       )
     ) {
       logger.debug(
-        `Allocation already exists for provider: ${providerId}, allocation: ${newAllocation.id}`
+        `Allocation already exists for provider: ${verifierId}, allocation: ${fetchedAllocation.msgCid}`
       );
       continue;
     }
 
     // Add the new allocation.
-    updatedAllocations[providerId].push(newAllocation);
+    if (!newAllocations[verifierId]) {
+      newAllocations[verifierId] = [];
+    }
+    newAllocations[verifierId].push(fetchedAllocation);
   }
 
   const updatedAllocatorFiles = updatedAllocators.map((allocator: any) => ({
     path: `Allocators/${allocator.application_number}.json`,
     content: JSON.stringify(allocator, null, 2),
   }));
-  const updatedAllocationFiles = Object.entries(updatedAllocations).map(
-    ([providerId, providerAllocations]) => ({
-      path: `Allocations/${providerId}.json`,
-      content: JSON.stringify(providerAllocations, null, 2),
-    })
+  const updatedAllocationFiles = Object.entries(newAllocations).map(
+    ([providerId, providerAllocations]) => {
+      const existingAllocations = allocations.filter(alloc => alloc.verifierId === Number(providerId))
+      return {
+        path: `Allocations/${providerId}.json`,
+        content: JSON.stringify([...providerAllocations, ...existingAllocations], null, 2),
+      }
+    }
   );
 
   const updatedFiles = updatedAllocatorFiles.concat(updatedAllocationFiles);
@@ -165,7 +165,7 @@ const githubClient = new GithubClient(config.github.token);
     .join(
       "\n- "
     )}\n\nUpdated allocations for the following allocators:\n- ${Object.entries(
-    updatedAllocations
+    newAllocations
   )
     .map(([allocatorId]) => `Allocator: ${allocatorId}`)
     .join("\n- ")}`;
@@ -182,13 +182,17 @@ const githubClient = new GithubClient(config.github.token);
     logger.info(`Pull request created: ${pullRequest.html_url}`);
 
     // If the PR already exists, add a comment instead.
-  } catch (error) {
-    await githubClient.addCommentToPullRequest(
-      config.github.repoOwner,
-      config.github.repoName,
-      config.github.repoBranch,
-      changelog,
-    );
-    logger.info(`Comment added to pull request for branch: ${config.github.repoBranch}`);
+  } catch (error: any) {
+    if (error.status === 422 && error.response.data.errors[0].message.includes("A pull request already exists")) {
+      await githubClient.addCommentToPullRequest(
+        config.github.repoOwner,
+        config.github.repoName,
+        config.github.repoBranch,
+        changelog,
+      );
+      logger.info(`Comment added to pull request for branch: ${config.github.repoBranch}`);
+    } else {
+      logger.info("Nothing to update.");
+    }
   }
 })();
