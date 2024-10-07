@@ -9,7 +9,11 @@ import { areArraysEqualSets } from "./utils/index.js";
 import FilfoxClient from "./clients/filfox.js";
 
 const lotusClient = new LotusClient(config.lotus.url, config.lotus.token);
-const githubClient = new GithubClient(config.github.token);
+const githubClient = new GithubClient(
+  config.github.appId,
+  config.github.privateKey,
+  config.github.installationId
+);
 const filfoxClient = new FilfoxClient();
 
 (async () => {
@@ -41,7 +45,7 @@ const filfoxClient = new FilfoxClient();
   const updatedAllocators = (
     await Promise.all(
       allocators
-        .filter((allocator) => allocator.address.startsWith("f2")) // Ignore non-f2 (actor) addresses.
+        .filter((allocator) => allocator.address && allocator.address.startsWith("f2")) // Ignore non-f2 (actor) addresses.
         .map(async (allocator) => {
           try {
             // Fetch on chain multisig data.

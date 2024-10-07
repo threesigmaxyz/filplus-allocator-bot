@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { components } from "@octokit/openapi-types";
+import { createAppAuth } from "@octokit/auth-app";
 
 
 export type RepositoryItem = components["schemas"]["content-directory"][number];
@@ -8,8 +9,19 @@ export type Branch = components["schemas"]["git-ref"];
 class GithubClient {
   private octokit: Octokit;
 
-  constructor(authToken: string) {
-    this.octokit = new Octokit({ auth: authToken });
+  constructor(
+    private appId: string,
+    private privateKey: string,
+    private installationId: string
+  ) {
+    this.octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: this.appId,
+        privateKey: this.privateKey,
+        installationId: this.installationId,
+      },
+    });
   }
 
   async getRepoContent(

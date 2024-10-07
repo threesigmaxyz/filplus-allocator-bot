@@ -18,7 +18,9 @@ const config = {
     repoOwner: process.env.REPO_OWNER || DEFAULT_REPO_OWNER,
     repoName: process.env.REPO_NAME || DEFAULT_REPO_NAME,
     repoBranch: process.env.REPO_BRANCH || DEFAULT_REPO_BRANCH,
-    token: process.env.GITHUB_TOKEN!,
+    appId: process.env.GH_APP_ID!,
+    privateKey: process.env.GH_APP_PRIVATE_KEY!,
+    installationId: process.env.GH_APP_INSTALLATION_ID!,
   },
   lotus: {
     url: process.env.LOTUS_URL || DEFAULT_LOTUS_URL,

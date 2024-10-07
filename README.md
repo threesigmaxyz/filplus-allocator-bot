@@ -32,10 +32,12 @@ Set the following environment variables below according to the specified require
 
 | Environment Variable | Description    | Example Values         |
 |---------------------|-----------------|-----------------------------------------|
-| GITHUB_TOKEN      | A PAT required to serve as authentication for read and write permissions   | `github_pat_*******************  `                |
 | REPO_OWNER | The name of the owner account of the repository  | `filecoin-project` |
 | REPO_NAME    | The repository identifier where we want to persist the data           |   `Allocator-Registry`    |
 | REPO_BRANCH        | The path of the location of the allocators    |    `filecoin-registry-bot`   |
+| GH_APP_ID | The ID of the GitHub App | `246226` |
+| GH_APP_PRIVATE_KEY | The private key of the GitHub App | `-----BEGIN PRIVATE KEY-----\n...` |
+| GH_APP_INSTALLATION_ID | The installation ID of the GitHub App | `123456` |
 | LOTUS_URL        | The URL of the Lotus node to connect to    |    `https://api.node.glif.io/rpc/v1` |
 | LOTUS_TOKEN        | The token of the Lotus node to connect to    | `*******************`  |
 
@@ -50,7 +52,9 @@ npm run start
 To run the bot in GitHub Actions, follow the steps below:
 
 - Copy the contents of the [example workflow file](.github/workflows/github-actions.yml) to your repository.
-- Set the `GITHUB_TOKEN`, `GITHUB_TOKEN` and `GITHUB_TOKEN` in your repository secrets.
+- Set the `REPO_OWNER`, `REPO_NAME`, `REPO_BRANCH` in your repository variables.
+- Set the `GH_APP_ID`, `GH_APP_PRIVATE_KEY` and `GH_APP_INSTALLATION_ID` in your repository secrets.
+- Set the `LOTUS_URL` and `LOTUS_TOKEN` in your repository secrets.
 
 This will setup an hourly schedule to run the bot, additionally, you can manually trigger the workflow to run.
 
