@@ -5,6 +5,7 @@ import { createAppAuth } from "@octokit/auth-app";
 
 export type RepositoryItem = components["schemas"]["content-directory"][number];
 export type Branch = components["schemas"]["git-ref"];
+export type PullRequest = components['schemas']['pull-request']
 
 class GithubClient {
   private octokit: Octokit;
@@ -108,7 +109,7 @@ class GithubClient {
     base: string,  // Branch to merge the changes into
     title: string,
     body: string
-  ): Promise<any> { // TODO: Any -> PullRequest
+  ): Promise<PullRequest> {
     const { data } = await this.octokit.pulls.create({
       owner,
       repo,
@@ -144,6 +145,43 @@ class GithubClient {
       body: comment,
     });
     return data;
+  }
+
+  async getPullRequestForBranch(owner: string, repo: string, branch: string): Promise<PullRequest | null> {
+    try {
+      const { data } = await this.octokit.pulls.list({
+        owner,
+        repo,
+        head: `${owner}:${branch}`,
+        state: 'open'
+      })
+
+      return data[0] as PullRequest
+    } catch (error: any) {
+      return null;
+    }
+  }
+
+  async mergePullRequest(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    commitMessage: string
+  ): Promise<void> {
+    await this.octokit.pulls.merge({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      commit_message: commitMessage,
+    })
+  }
+
+  async deleteBranch(owner: string, repo: string, branchName: string): Promise<void> {
+    await this.octokit.git.deleteRef({
+      owner,
+      repo,
+      ref: `heads/${branchName}`,
+    })
   }
 
   private async getReferenceHash(

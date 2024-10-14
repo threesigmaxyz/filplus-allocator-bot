@@ -158,45 +158,94 @@ const filfoxClient = new FilfoxClient();
     config.github.repoOwner,
     config.github.repoName,
     config.github.repoBranch,
-    "Automated Update",
+    'bot: Automated Update',
     updatedFiles
   );
   logger.info("Files updated successfully.");
 
-  // Create PR or add a comment to the existing PR.
-  const changelog = `This PR updates the multisig signers for the following allocators:\n- ${updatedAllocators
-    .map((allocator: any) => `Allocator: ${allocator.application_number}`)
-    .join(
-      "\n- "
-    )}\n\nUpdated allocations for the following allocators:\n- ${Object.entries(
-    newAllocations
-  )
-    .map(([allocatorId]) => `Allocator: ${allocatorId}`)
-    .join("\n- ")}`;
+  const generateChangelogTable = (title: string, data: any[], columns: string[]) => {
+    if (data.length === 0) return '';
+    return `
+  ### ${title}
   
-  try {
-    const pullRequest = await githubClient.createPullRequest(
+  | ${columns.join(' | ')} |
+  |${columns.map(() => ':---').join('|')}|
+  ${data.map(item => `| ${columns.map(col => item[col] || '').join(' | ')} |`).join('\n')}
+  `;
+  };
+  
+  const updatedAllocatorsTable = generateChangelogTable(
+    'Updated Multisig Signers',
+    updatedAllocators.map((allocator: any) => ({
+      'Application Number': allocator.application_number,
+      'Address': allocator.address,
+      'Signers': allocator.pathway_addresses.signer.join(', ')
+    })),
+    ['Application Number', 'Address', 'Signers']
+  );
+  
+  const newAllocationsTable = generateChangelogTable(
+    'New Allocations',
+    Object.entries(newAllocations).flatMap(([verifierId, allocations]) => 
+      allocations.map(allocation => ({
+        'Verifier ID': verifierId,
+        'Client': allocation.clientAddress,
+        'Allowance': allocation.clientAllowance,
+      }))
+    ),
+    ['Verifier ID', 'Client', 'Allowance']
+  );
+    
+  const changelog = `# Automated Update
+    
+  ${updatedAllocatorsTable}
+  ${newAllocationsTable}
+  `.trim();
+
+  const existingPullRequest = await githubClient.getPullRequestForBranch(
+    config.github.repoOwner,
+    config.github.repoName,
+    config.github.repoBranch
+  );
+
+  if (existingPullRequest) {
+    logger.info(`Pull request already exists: ${existingPullRequest.html_url}`);
+    await githubClient.addCommentToPullRequest(
       config.github.repoOwner,
       config.github.repoName,
       config.github.repoBranch,
-      "main",
-      "Automated Update",
-      changelog
+      changelog,
     );
-    logger.info(`Pull request created: ${pullRequest.html_url}`);
+    logger.info(`Comment added to pull request for branch: ${config.github.repoBranch}`);
+  }
 
-    // If the PR already exists, add a comment instead.
+  const pullRequest = existingPullRequest || await githubClient.createPullRequest(
+    config.github.repoOwner,
+    config.github.repoName,
+    config.github.repoBranch,
+    "main",
+    'bot: Automated Update',
+    changelog
+  )
+  logger.info(`Pull request created: ${pullRequest.html_url}`);
+
+  try {
+    await githubClient.mergePullRequest(
+      config.github.repoOwner,
+      config.github.repoName,
+      pullRequest.number,
+      "bot: Automated Update",
+    );
+    logger.info(`Pull request merged: ${pullRequest.html_url}`);
+    
+    await githubClient.deleteBranch(
+      config.github.repoOwner,
+      config.github.repoName,
+      config.github.repoBranch
+    );
+    logger.info(`Branch deleted: ${config.github.repoBranch}`);
+
   } catch (error: any) {
-    if (error.status === 422 && error.response.data.errors[0].message.includes("A pull request already exists")) {
-      await githubClient.addCommentToPullRequest(
-        config.github.repoOwner,
-        config.github.repoName,
-        config.github.repoBranch,
-        changelog,
-      );
-      logger.info(`Comment added to pull request for branch: ${config.github.repoBranch}`);
-    } else {
-      logger.info("Nothing to update.");
-    }
+    logger.error(`Failed to merge pull request: ${error.message}`);
   }
 })();
