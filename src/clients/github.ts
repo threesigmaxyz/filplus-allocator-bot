@@ -153,7 +153,10 @@ class GithubClient {
         owner,
         repo,
         head: `${owner}:${branch}`,
-        state: 'open'
+        state: 'open',
+        sort: 'updated',  // Sort by last updated
+        direction: 'desc',  // Most recent first
+        per_page: 1  // We only need the most recent one
       })
 
       return data[0] as PullRequest

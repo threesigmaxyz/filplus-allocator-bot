@@ -150,6 +150,37 @@ const filfoxClient = new FilfoxClient();
   const updatedFiles = updatedAllocatorFiles.concat(updatedAllocationFiles);
   if (updatedFiles.length === 0) {
     logger.debug("No files to update.");
+
+    const pullRequest = await githubClient.getPullRequestForBranch(
+      config.github.repoOwner,
+      config.github.repoName,
+      config.github.repoBranch
+    );
+
+    if (!pullRequest) {
+      logger.debug("No pull request found for branch.");
+      return;
+    }
+
+    try {
+      await githubClient.mergePullRequest(
+        config.github.repoOwner,
+        config.github.repoName,
+        pullRequest.number,
+        "bot: Automated Update",
+      );
+      logger.info(`Pull request merged: ${pullRequest.html_url}`);
+      
+      await githubClient.deleteBranch(
+        config.github.repoOwner,
+        config.github.repoName,
+        config.github.repoBranch
+      );
+      logger.info(`Branch deleted: ${config.github.repoBranch}`);
+  
+    } catch (error: any) {
+      logger.error(`Failed to merge pull request: ${error.message}`);
+    }
     return;
   }
 
